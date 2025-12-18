@@ -131,7 +131,7 @@ async def ad_category(callback: CallbackQuery, state: FSMContext):
     )
 
     public_caption = (
-        f"📌 #{category}\n\n"
+        f"📌 {category}\n\n"
         f"📝 {data['description']}\n"
         f"💰 {data['price']}\n\n"
         f"📩 Связь: {username}\n"
