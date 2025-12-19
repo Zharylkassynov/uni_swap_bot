@@ -28,7 +28,7 @@ from states import AdForm
 router = Router()
 
 # ================== ХРАНИЛИЩЕ ЗАЯВОК ==================
-# ad_id -> {type: "regular"|"sos", photo, admin_caption, public_caption, user_id}
+# ad_id -> {type: "regular"|"sos", photo (None для SOS), admin_caption, public_caption, user_id}
 PENDING_ADS = {}
 
 
@@ -66,7 +66,7 @@ async def rules_handler(callback: CallbackQuery):
         "📜 Правила UNI Swap:\n\n"
         "• Обычное объявление — бесплатно\n"
         "• SOS объявление — 500 тг\n"
-        "• Фото обязательно\n"
+        "• Фото обязательно (только для обычных объявлений)\n"
         "• Для публикации нужен @username\n"
         "• Один товар — одно объявление\n"
         "• Админ может отказать в публикации"
@@ -90,8 +90,21 @@ async def add_ad_start(callback: CallbackQuery, state: FSMContext):
 async def ad_type_selected(callback: CallbackQuery, state: FSMContext):
     ad_type = callback.data.split(":")[1]  # "regular" или "sos"
     await state.update_data(ad_type=ad_type)
-    await state.set_state(AdForm.photo)
-    await callback.message.answer("📸 Отправьте фото вещи")
+    
+    if ad_type == "sos":
+        # SOS объявления: только описание
+        await state.set_state(AdForm.sos_description)
+        await callback.message.answer(
+            "🆘 Опишите, что вам срочно нужно.\n\n"
+            "Пример:\n"
+            "— Срочно нужен калькулятор Casio на сегодня\n"
+            "— Нужен учебник по математике до завтра"
+        )
+    else:
+        # Обычные объявления: фото, описание, цена, категория
+        await state.set_state(AdForm.photo)
+        await callback.message.answer("📸 Отправьте фото вещи")
+    
     await callback.answer()
 
 
@@ -100,6 +113,70 @@ async def ad_photo(message: Message, state: FSMContext):
     await state.update_data(photo=message.photo[-1].file_id)
     await state.set_state(AdForm.description)
     await message.answer("📝 Напишите описание вещи")
+
+
+@router.message(AdForm.sos_description)
+async def sos_description_handler(message: Message, state: FSMContext):
+    """Обработчик описания для SOS объявлений"""
+    description = message.text
+    if not description or not description.strip():
+        await message.answer("❌ Пожалуйста, отправьте текстовое описание.")
+        return
+    
+    data = await state.get_data()
+    await state.clear()
+    
+    user = message.from_user
+    ad_type = data.get("ad_type", "sos")
+    
+    # ❗️username ОБЯЗАТЕЛЕН для публикации
+    if not user.username:
+        await message.answer(
+            "❌ Для публикации объявления у вас должен быть установлен @username.\n"
+            "Пожалуйста, добавьте username в настройках Telegram и попробуйте снова."
+        )
+        return
+    
+    username = f"@{user.username}"
+    
+    # Формируем admin_caption для SOS объявления
+    admin_caption = (
+        "🆘 SOS ОБЪЯВЛЕНИЕ\n\n"
+        f"👤 Пользователь: {user.full_name}\n"
+        f"🔗 Username: {username}\n"
+        f"🆔 ID: {user.id}\n\n"
+        f"📝 Описание: {description}"
+    )
+    
+    # Формируем public_caption для SOS объявления
+    public_caption = (
+        "🆘 SOS ОБЪЯВЛЕНИЕ 🆘\n\n"
+        f"📝 {description}\n\n"
+        f"📩 Связь: {username}\n"
+        "♻️ UNI Swap"
+    )
+    
+    ad_id = hash((user.id, public_caption, ad_type))
+    
+    PENDING_ADS[ad_id] = {
+        "type": ad_type,
+        "photo": None,  # SOS объявления без фото
+        "admin_caption": admin_caption,
+        "public_caption": public_caption,
+        "user_id": user.id,
+    }
+    
+    # Отправляем в админ-группу без фото (только текст)
+    await message.bot.send_message(
+        ADMIN_GROUP_ID,
+        text=admin_caption,
+        reply_markup=admin_check_kb(ad_id)
+    )
+    
+    await message.answer(
+        "✅ Объявление отправлено на проверку модератору.\n"
+        "⏳ Ожидайте ответа."
+    )
 
 
 @router.message(AdForm.description)
@@ -136,11 +213,9 @@ async def ad_category(callback: CallbackQuery, state: FSMContext):
 
     username = f"@{user.username}"
 
-    # Формируем admin_caption с указанием типа объявления
-    ad_type_label = "🚨 SOS ОБЪЯВЛЕНИЕ" if ad_type == "sos" else "🆕 ОБЫЧНОЕ ОБЪЯВЛЕНИЕ"
-    
+    # Формируем admin_caption для обычного объявления
     admin_caption = (
-        f"{ad_type_label}\n\n"
+        "🆕 ОБЫЧНОЕ ОБЪЯВЛЕНИЕ\n\n"
         f"👤 Пользователь: {user.full_name}\n"
         f"🔗 Username: {username}\n"
         f"🆔 ID: {user.id}\n\n"
@@ -149,23 +224,14 @@ async def ad_category(callback: CallbackQuery, state: FSMContext):
         f"💰 Цена: {data['price']}"
     )
 
-    # Формируем public_caption с SOS оформлением для SOS объявлений
-    if ad_type == "sos":
-        public_caption = (
-            "🚨 SOS ОБЪЯВЛЕНИЕ 🚨\n\n"
-            f"📝 {data['description']}\n"
-            f"💰 {data['price']}\n\n"
-            f"📩 Связь: {username}\n"
-            "♻️ UNI Swap"
-        )
-    else:
-        public_caption = (
-            f"📌 {category}\n\n"
-            f"📝 {data['description']}\n"
-            f"💰 {data['price']}\n\n"
-            f"📩 Связь: {username}\n"
-            "♻️ UNI Swap"
-        )
+    # Формируем public_caption для обычного объявления
+    public_caption = (
+        f"📌 {category}\n\n"
+        f"📝 {data['description']}\n"
+        f"💰 {data['price']}\n\n"
+        f"📩 Связь: {username}\n"
+        "♻️ UNI Swap"
+    )
 
     ad_id = hash((user.id, public_caption, ad_type))
 
@@ -295,11 +361,21 @@ async def admin_publish(callback: CallbackQuery):
         await callback.answer("Заявка не найдена", show_alert=True)
         return
 
-    await callback.bot.send_photo(
-        CHANNEL_ID,
-        photo=ad["photo"],
-        caption=ad["public_caption"]
-    )
+    ad_type = ad.get("type", "regular")
+    
+    if ad_type == "sos":
+        # SOS объявления публикуются без фото (только текст)
+        await callback.bot.send_message(
+            CHANNEL_ID,
+            text=ad["public_caption"]
+        )
+    else:
+        # Обычные объявления публикуются с фото
+        await callback.bot.send_photo(
+            CHANNEL_ID,
+            photo=ad["photo"],
+            caption=ad["public_caption"]
+        )
 
     await callback.bot.send_message(
         ad["user_id"],

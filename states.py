@@ -10,3 +10,4 @@ class AdForm(StatesGroup):
     wait_moderation = State()
     wait_payment = State()
     wait_receipt = State()
+    sos_description = State()  # Описание для SOS объявлений
