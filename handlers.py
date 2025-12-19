@@ -20,13 +20,12 @@ from keyboards import (
     retry_receipt_kb,
 )
 
-
 from states import AdForm
 
 router = Router()
 
-# ================== ХРАНИЛИЩЕ ЗАЯВОК ==================
-# ad_id -> {photo, admin_caption, public_caption, user_id}
+# ================== STORAGE ==================
+# ad_id -> dict
 PENDING_ADS = {}
 
 
@@ -62,16 +61,16 @@ async def categories_handler(callback: CallbackQuery):
 async def rules_handler(callback: CallbackQuery):
     await callback.message.answer(
         "📜 Правила UNI Swap:\n\n"
-        "• Цена размещения — 250 тг\n"
+        "• Обычные объявления — бесплатно\n"
+        "• SOS объявления — платные\n"
         "• Фото обязательно\n"
-        "• Для публикации нужен @username\n"
-        "• Один товар — одно объявление\n"
-        "• Админ может отказать в публикации"
+        "• Нужен @username\n"
+        "• Админ может отказать"
     )
     await callback.answer()
 
 
-# -------------------- ADD AD (FSM) --------------------
+# -------------------- ADD AD --------------------
 
 @router.callback_query(F.data == "add")
 async def add_ad_start(callback: CallbackQuery, state: FSMContext):
@@ -84,14 +83,14 @@ async def add_ad_start(callback: CallbackQuery, state: FSMContext):
 async def ad_photo(message: Message, state: FSMContext):
     await state.update_data(photo=message.photo[-1].file_id)
     await state.set_state(AdForm.description)
-    await message.answer("📝 Напишите описание вещи")
+    await message.answer("📝 Напишите описание")
 
 
 @router.message(AdForm.description)
 async def ad_description(message: Message, state: FSMContext):
     await state.update_data(description=message.text)
     await state.set_state(AdForm.price)
-    await message.answer("💰 Укажите цену или условия аренды")
+    await message.answer("💰 Укажите цену")
 
 
 @router.message(AdForm.price)
@@ -109,32 +108,31 @@ async def ad_category(callback: CallbackQuery, state: FSMContext):
 
     user = callback.from_user
 
-    # ❗️username ОБЯЗАТЕЛЕН для публикации
     if not user.username:
         await callback.message.answer(
-            "❌ Для публикации объявления у вас должен быть установлен @username.\n"
-            "Пожалуйста, добавьте username в настройках Telegram и попробуйте снова."
+            "❌ Для публикации нужен @username.\n"
+            "Добавьте его в настройках Telegram."
         )
         await callback.answer()
         return
 
-    username = f"@{user.username}"
+    username = "@" + user.username
 
     admin_caption = (
         "🆕 Новое объявление\n\n"
-        f"👤 Пользователь: {user.full_name}\n"
-        f"🆔 ID: {user.id}\n"
-        f"🔗 Username: {username}\n\n"
-        f"📌 Категория: {category}\n"
-        f"📝 Описание: {data['description']}\n"
-        f"💰 Цена: {data['price']}"
+        "👤 Пользователь: " + user.full_name + "\n"
+        "🆔 ID: " + str(user.id) + "\n"
+        "🔗 Username: " + username + "\n\n"
+        "📌 Категория: " + category + "\n"
+        "📝 Описание: " + data["description"] + "\n"
+        "💰 Цена: " + data["price"]
     )
 
     public_caption = (
-        f"📌 {category}\n\n"
-        f"📝 {data['description']}\n"
-        f"💰 {data['price']}\n\n"
-        f"📩 Связь: {username}\n"
+        "📌 " + category + "\n\n"
+        "📝 " + data["description"] + "\n"
+        "💰 " + data["price"] + "\n\n"
+        "📩 Связь: " + username + "\n"
         "♻️ UNI Swap"
     )
 
@@ -154,14 +152,11 @@ async def ad_category(callback: CallbackQuery, state: FSMContext):
         reply_markup=admin_check_kb(ad_id)
     )
 
-    await callback.message.answer(
-        "✅ Объявление отправлено на проверку модератору.\n"
-        "⏳ Ожидайте ответа."
-    )
+    await callback.message.answer("✅ Объявление отправлено на модерацию")
     await callback.answer()
 
 
-# -------------------- ADMIN: APPROVE --------------------
+# -------------------- ADMIN APPROVE --------------------
 
 @router.callback_query(F.data.startswith("admin:approved:"))
 async def admin_approved(callback: CallbackQuery):
@@ -169,46 +164,45 @@ async def admin_approved(callback: CallbackQuery):
     ad = PENDING_ADS.get(ad_id)
 
     if not ad:
-        await callback.answer("Заявка не найдена", show_alert=True)
+        await callback.answer("Не найдено", show_alert=True)
         return
 
-    await callback.bot.send_message(
-        ad["user_id"],
-        "✅ Ваше объявление прошло проверку.\n\n"
-        f"💳 Для публикации переведите {PRICE} тг через Kaspi:\n"
-        f"📱 {KASPI_PHONE}\n"
-        f"👤 {KASPI_NAME}\n\n"
-        "📎 После оплаты отправьте ЧЕК (PDF или фото) в этот чат."
+    text = (
+        "✅ Объявление одобрено\n\n"
+        "💳 Для SOS объявления оплатите " + str(PRICE) + " тг\n"
+        "📱 " + KASPI_PHONE + "\n"
+        "👤 " + KASPI_NAME + "\n\n"
+        "📎 Отправьте чек (PDF или фото)"
     )
 
-    await callback.message.answer("⏳ Ожидаем чек от пользователя")
+    await callback.bot.send_message(ad["user_id"], text)
+    await callback.message.answer("⏳ Ожидаем чек")
     await callback.answer()
 
 
-# -------------------- USER: SEND RECEIPT --------------------
+# -------------------- USER RECEIPT --------------------
 
 @router.message(F.photo | F.document)
 async def receipt_handler(message: Message):
-    user_ads = [
+    ads = [
         (ad_id, ad)
         for ad_id, ad in PENDING_ADS.items()
         if ad["user_id"] == message.from_user.id
     ]
 
-    if not user_ads:
+    if not ads:
         return
 
-    ad_id, _ = user_ads[0]
+    ad_id, _ = ads[0]
 
     user = message.from_user
-
-    username = f"@{user.username}" if user.username else "—"
+    username = "@" + user.username if user.username else "—"
 
     caption = (
         "💳 Чек оплаты\n\n"
-        f"👤 Пользователь: {user.full_name}\n"
-        f"🔗 Username: {username}\n"
-        f"🆔 ID: {user.id}"
+        "👤 " + user.full_name + "\n"
+        "🔗 " + username + "\n"
+        "🆔 " + str(user.id)
     )
 
     if message.photo:
@@ -226,13 +220,10 @@ async def receipt_handler(message: Message):
             reply_markup=admin_publish_kb(ad_id)
         )
 
-    await message.answer(
-        "📎 Чек получен.\n"
-        "⏳ Ожидайте подтверждения модератора."
-    )
+    await message.answer("📎 Чек получен")
 
 
-# -------------------- ADMIN: PUBLISH --------------------
+# -------------------- ADMIN PUBLISH --------------------
 
 @router.callback_query(F.data.startswith("admin:publish:"))
 async def admin_publish(callback: CallbackQuery):
@@ -240,7 +231,7 @@ async def admin_publish(callback: CallbackQuery):
     ad = PENDING_ADS.get(ad_id)
 
     if not ad:
-        await callback.answer("Заявка не найдена", show_alert=True)
+        await callback.answer("Не найдено", show_alert=True)
         return
 
     await callback.bot.send_photo(
@@ -251,17 +242,16 @@ async def admin_publish(callback: CallbackQuery):
 
     await callback.bot.send_message(
         ad["user_id"],
-        "🎉 Ваше объявление опубликовано в канале UNI Swap!\n"
-        "Спасибо за использование платформы ♻️"
+        "🎉 Ваше объявление опубликовано!"
     )
 
     del PENDING_ADS[ad_id]
 
-    await callback.message.answer("✅ Объявление опубликовано")
+    await callback.message.answer("✅ Опубликовано")
     await callback.answer()
 
 
-# -------------------- ADMIN: REJECT --------------------
+# -------------------- ADMIN REJECT --------------------
 
 @router.callback_query(F.data.startswith("admin:reject:"))
 async def admin_reject(callback: CallbackQuery):
@@ -269,47 +259,32 @@ async def admin_reject(callback: CallbackQuery):
     ad = PENDING_ADS.get(ad_id)
 
     if not ad:
-        await callback.answer("Заявка не найдена", show_alert=True)
+        await callback.answer("Не найдено", show_alert=True)
         return
 
-    message_text = callback.message.text or ""
-    message_caption = callback.message.caption or ""
-
-    is_receipt = "Чек оплаты" in message_caption or "Чек оплаты" in message_text
+    caption = callback.message.caption or ""
+    is_receipt = "Чек оплаты" in caption
 
     if is_receipt:
-        # ❌ ОТКЛОНЁН ЧЕК — заявка остаётся
         await callback.bot.send_message(
             ad["user_id"],
-            "❌ Чек отклонён модератором.\n\n"
-            "Пожалуйста, отправьте корректный чек об оплате ещё раз.",
+            "❌ Чек отклонён.\n"
+            "Отправьте чек ещё раз.",
             reply_markup=retry_receipt_kb()
         )
-
-        await callback.message.answer(
-            "❌ Чек отклонён. Ожидаем новый чек от пользователя."
-        )
-
     else:
-        # ❌ ОТКЛОНЕНО ОБЪЯВЛЕНИЕ — заявка удаляется
         await callback.bot.send_message(
             ad["user_id"],
-            "❌ Ваше объявление отклонено модератором.\n\n"
-            "Вы можете подать объявление заново.",
+            "❌ Объявление отклонено.",
             reply_markup=retry_ad_kb()
         )
-
         del PENDING_ADS[ad_id]
 
-        await callback.message.answer("❌ Объявление отклонено.")
-
-    await callback.answer("Отклонено")
+    await callback.message.answer("❌ Отклонено")
+    await callback.answer()
 
 
 @router.callback_query(F.data == "retry_receipt")
 async def retry_receipt(callback: CallbackQuery):
-    await callback.message.answer(
-        "📎 Пожалуйста, отправьте чек об оплате (PDF или фото)."
-    )
+    await callback.message.answer("📎 Отправьте чек (PDF или фото)")
     await callback.answer()
-

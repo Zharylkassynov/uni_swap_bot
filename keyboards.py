@@ -69,3 +69,13 @@ def retry_receipt_kb():
             )
         ]
     ])
+
+def ad_type_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🟢 Обычное (бесплатно)", callback_data="type:normal")
+        ],
+        [
+            InlineKeyboardButton(text="🚨 SOS (500 тг)", callback_data="type:sos")
+        ]
+    ])
