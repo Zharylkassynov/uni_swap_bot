@@ -4,4 +4,5 @@ ADMIN_GROUP_ID = -1003658939800
 
 KASPI_PHONE = "+7 702 918 7034"
 KASPI_NAME = "Сабина Т."
-PRICE = 250
+PRICE = 0  # Обычные объявления бесплатные
+SOS_PRICE = 500  # SOS объявления стоят 500 тг

@@ -9,6 +9,7 @@ from config import (
     KASPI_PHONE,
     KASPI_NAME,
     PRICE,
+    SOS_PRICE,
 )
 
 from keyboards import (
@@ -18,6 +19,7 @@ from keyboards import (
     admin_publish_kb,
     retry_ad_kb,
     retry_receipt_kb,
+    ad_type_kb,
 )
 
 
@@ -26,7 +28,7 @@ from states import AdForm
 router = Router()
 
 # ================== ХРАНИЛИЩЕ ЗАЯВОК ==================
-# ad_id -> {photo, admin_caption, public_caption, user_id}
+# ad_id -> {type: "regular"|"sos", photo, admin_caption, public_caption, user_id}
 PENDING_ADS = {}
 
 
@@ -62,7 +64,8 @@ async def categories_handler(callback: CallbackQuery):
 async def rules_handler(callback: CallbackQuery):
     await callback.message.answer(
         "📜 Правила UNI Swap:\n\n"
-        "• Цена размещения — 250 тг\n"
+        "• Обычное объявление — бесплатно\n"
+        "• SOS объявление — 500 тг\n"
         "• Фото обязательно\n"
         "• Для публикации нужен @username\n"
         "• Один товар — одно объявление\n"
@@ -75,6 +78,18 @@ async def rules_handler(callback: CallbackQuery):
 
 @router.callback_query(F.data == "add")
 async def add_ad_start(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(AdForm.ad_type)
+    await callback.message.answer(
+        "📝 Выберите тип объявления:",
+        reply_markup=ad_type_kb()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("ad_type:"))
+async def ad_type_selected(callback: CallbackQuery, state: FSMContext):
+    ad_type = callback.data.split(":")[1]  # "regular" или "sos"
+    await state.update_data(ad_type=ad_type)
     await state.set_state(AdForm.photo)
     await callback.message.answer("📸 Отправьте фото вещи")
     await callback.answer()
@@ -108,6 +123,7 @@ async def ad_category(callback: CallbackQuery, state: FSMContext):
     await state.clear()
 
     user = callback.from_user
+    ad_type = data.get("ad_type", "regular")  # По умолчанию regular
 
     # ❗️username ОБЯЗАТЕЛЕН для публикации
     if not user.username:
@@ -120,27 +136,41 @@ async def ad_category(callback: CallbackQuery, state: FSMContext):
 
     username = f"@{user.username}"
 
+    # Формируем admin_caption с указанием типа объявления
+    ad_type_label = "🚨 SOS ОБЪЯВЛЕНИЕ" if ad_type == "sos" else "🆕 ОБЫЧНОЕ ОБЪЯВЛЕНИЕ"
+    
     admin_caption = (
-        "🆕 Новое объявление\n\n"
+        f"{ad_type_label}\n\n"
         f"👤 Пользователь: {user.full_name}\n"
-        f"🆔 ID: {user.id}\n"
-        f"🔗 Username: {username}\n\n"
+        f"🔗 Username: {username}\n"
+        f"🆔 ID: {user.id}\n\n"
         f"📌 Категория: {category}\n"
         f"📝 Описание: {data['description']}\n"
         f"💰 Цена: {data['price']}"
     )
 
-    public_caption = (
-        f"📌 {category}\n\n"
-        f"📝 {data['description']}\n"
-        f"💰 {data['price']}\n\n"
-        f"📩 Связь: {username}\n"
-        "♻️ UNI Swap"
-    )
+    # Формируем public_caption с SOS оформлением для SOS объявлений
+    if ad_type == "sos":
+        public_caption = (
+            "🚨 SOS ОБЪЯВЛЕНИЕ 🚨\n\n"
+            f"📝 {data['description']}\n"
+            f"💰 {data['price']}\n\n"
+            f"📩 Связь: {username}\n"
+            "♻️ UNI Swap"
+        )
+    else:
+        public_caption = (
+            f"📌 {category}\n\n"
+            f"📝 {data['description']}\n"
+            f"💰 {data['price']}\n\n"
+            f"📩 Связь: {username}\n"
+            "♻️ UNI Swap"
+        )
 
-    ad_id = hash((user.id, public_caption))
+    ad_id = hash((user.id, public_caption, ad_type))
 
     PENDING_ADS[ad_id] = {
+        "type": ad_type,
         "photo": data["photo"],
         "admin_caption": admin_caption,
         "public_caption": public_caption,
@@ -172,27 +202,49 @@ async def admin_approved(callback: CallbackQuery):
         await callback.answer("Заявка не найдена", show_alert=True)
         return
 
-    await callback.bot.send_message(
-        ad["user_id"],
-        "✅ Ваше объявление прошло проверку.\n\n"
-        f"💳 Для публикации переведите {PRICE} тг через Kaspi:\n"
-        f"📱 {KASPI_PHONE}\n"
-        f"👤 {KASPI_NAME}\n\n"
-        "📎 После оплаты отправьте ЧЕК (PDF или фото) в этот чат."
-    )
+    ad_type = ad.get("type", "regular")
 
-    await callback.message.answer("⏳ Ожидаем чек от пользователя")
-    await callback.answer()
+    if ad_type == "regular":
+        # Обычное объявление публикуется сразу после одобрения
+        await callback.bot.send_photo(
+            CHANNEL_ID,
+            photo=ad["photo"],
+            caption=ad["public_caption"]
+        )
+
+        await callback.bot.send_message(
+            ad["user_id"],
+            "🎉 Ваше объявление опубликовано в канале UNI Swap!\n"
+            "Спасибо за использование платформы ♻️"
+        )
+
+        del PENDING_ADS[ad_id]
+        await callback.message.answer("✅ Объявление опубликовано")
+        await callback.answer()
+    else:
+        # SOS объявление требует оплаты
+        await callback.bot.send_message(
+            ad["user_id"],
+            "✅ Ваше SOS объявление прошло проверку.\n\n"
+            f"💳 Для публикации переведите {SOS_PRICE} тг через Kaspi:\n"
+            f"📱 {KASPI_PHONE}\n"
+            f"👤 {KASPI_NAME}\n\n"
+            "📎 После оплаты отправьте ЧЕК (PDF или фото) в этот чат."
+        )
+
+        await callback.message.answer("⏳ Ожидаем чек от пользователя")
+        await callback.answer()
 
 
 # -------------------- USER: SEND RECEIPT --------------------
 
 @router.message(F.photo | F.document)
 async def receipt_handler(message: Message):
+    # Ищем только SOS объявления пользователя, которые ожидают оплаты
     user_ads = [
         (ad_id, ad)
         for ad_id, ad in PENDING_ADS.items()
-        if ad["user_id"] == message.from_user.id
+        if ad["user_id"] == message.from_user.id and ad.get("type") == "sos"
     ]
 
     if not user_ads:

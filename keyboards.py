@@ -8,6 +8,23 @@ def main_menu():
         [InlineKeyboardButton(text="📞 Связаться с админом", url="https://t.me/nelyashakh")]
     ])
 
+def ad_type_kb():
+    """Клавиатура выбора типа объявления"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="🆓 Обычное объявление (бесплатно)",
+                callback_data="ad_type:regular"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🚨 SOS объявление (500 тг)",
+                callback_data="ad_type:sos"
+            )
+        ]
+    ])
+
 def categories_kb():
     buttons = [
         "👕 Одежда", "📚 Книги", "💻 Электроника",
@@ -47,7 +64,6 @@ def admin_publish_kb(ad_id: int):
         ]
     ])
 
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 def retry_ad_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
