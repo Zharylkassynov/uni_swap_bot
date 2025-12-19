@@ -20,6 +20,7 @@ from keyboards import (
     retry_ad_kb,
     retry_receipt_kb,
     ad_type_kb,
+    main_reply_menu,
 )
 
 
@@ -40,7 +41,7 @@ async def start_handler(message: Message, state: FSMContext):
     await message.answer(
         "👋 Добро пожаловать в UNI Swap ♻️\n\n"
         "Платформа для обмена и аренды вещей между студентами.",
-        reply_markup=main_menu()
+        reply_markup=main_reply_menu()
     )
 
 
@@ -55,9 +56,26 @@ async def categories_handler(callback: CallbackQuery):
         "• 💻 Электроника\n"
         "• 🏠 Для дома\n"
         "• 🎓 Учёба\n"
-        "• 📦 Другое"
+        "• 📦 Другое",
+        reply_markup=main_reply_menu()
     )
     await callback.answer()
+
+
+@router.message(F.text == "📂 Категории")
+async def categories_text_handler(message: Message, state: FSMContext):
+    """Обработчик текстовой кнопки 'Категории'"""
+    await state.clear()  # Очищаем состояние FSM, если было активно
+    await message.answer(
+        "📂 Категории объявлений:\n"
+        "• 👕 Одежда\n"
+        "• 📚 Книги\n"
+        "• 💻 Электроника\n"
+        "• 🏠 Для дома\n"
+        "• 🎓 Учёба\n"
+        "• 📦 Другое",
+        reply_markup=main_reply_menu()
+    )
 
 
 @router.callback_query(F.data == "rules")
@@ -69,9 +87,26 @@ async def rules_handler(callback: CallbackQuery):
         "• Фото обязательно (только для обычных объявлений)\n"
         "• Для публикации нужен @username\n"
         "• Один товар — одно объявление\n"
-        "• Админ может отказать в публикации"
+        "• Админ может отказать в публикации",
+        reply_markup=main_reply_menu()
     )
     await callback.answer()
+
+
+@router.message(F.text == "📜 Правила")
+async def rules_text_handler(message: Message, state: FSMContext):
+    """Обработчик текстовой кнопки 'Правила'"""
+    await state.clear()  # Очищаем состояние FSM, если было активно
+    await message.answer(
+        "📜 Правила UNI Swap:\n\n"
+        "• Обычное объявление — бесплатно\n"
+        "• SOS объявление — 500 тг\n"
+        "• Фото обязательно (только для обычных объявлений)\n"
+        "• Для публикации нужен @username\n"
+        "• Один товар — одно объявление\n"
+        "• Админ может отказать в публикации",
+        reply_markup=main_reply_menu()
+    )
 
 
 # -------------------- ADD AD (FSM) --------------------
@@ -84,6 +119,17 @@ async def add_ad_start(callback: CallbackQuery, state: FSMContext):
         reply_markup=ad_type_kb()
     )
     await callback.answer()
+
+
+@router.message(F.text == "➕ Подать объявление")
+async def add_ad_text_handler(message: Message, state: FSMContext):
+    """Обработчик текстовой кнопки 'Подать объявление'"""
+    await state.clear()  # Очищаем предыдущее состояние, если было
+    await state.set_state(AdForm.ad_type)
+    await message.answer(
+        "📝 Выберите тип объявления:",
+        reply_markup=ad_type_kb()
+    )
 
 
 @router.callback_query(F.data.startswith("ad_type:"))
@@ -120,7 +166,10 @@ async def sos_description_handler(message: Message, state: FSMContext):
     """Обработчик описания для SOS объявлений"""
     description = message.text
     if not description or not description.strip():
-        await message.answer("❌ Пожалуйста, отправьте текстовое описание.")
+        await message.answer(
+            "❌ Пожалуйста, отправьте текстовое описание.",
+            reply_markup=main_reply_menu()
+        )
         return
     
     data = await state.get_data()
@@ -133,7 +182,8 @@ async def sos_description_handler(message: Message, state: FSMContext):
     if not user.username:
         await message.answer(
             "❌ Для публикации объявления у вас должен быть установлен @username.\n"
-            "Пожалуйста, добавьте username в настройках Telegram и попробуйте снова."
+            "Пожалуйста, добавьте username в настройках Telegram и попробуйте снова.",
+            reply_markup=main_reply_menu()
         )
         return
     
@@ -170,12 +220,13 @@ async def sos_description_handler(message: Message, state: FSMContext):
     await message.bot.send_message(
         ADMIN_GROUP_ID,
         text=admin_caption,
-        reply_markup=admin_check_kb(ad_id)
+        reply_markup=admin_publish_kb(ad_id)
     )
     
     await message.answer(
         "✅ Объявление отправлено на проверку модератору.\n"
-        "⏳ Ожидайте ответа."
+        "⏳ Ожидайте ответа.",
+        reply_markup=main_reply_menu()
     )
 
 
@@ -206,7 +257,8 @@ async def ad_category(callback: CallbackQuery, state: FSMContext):
     if not user.username:
         await callback.message.answer(
             "❌ Для публикации объявления у вас должен быть установлен @username.\n"
-            "Пожалуйста, добавьте username в настройках Telegram и попробуйте снова."
+            "Пожалуйста, добавьте username в настройках Telegram и попробуйте снова.",
+            reply_markup=main_reply_menu()
         )
         await callback.answer()
         return
@@ -252,7 +304,8 @@ async def ad_category(callback: CallbackQuery, state: FSMContext):
 
     await callback.message.answer(
         "✅ Объявление отправлено на проверку модератору.\n"
-        "⏳ Ожидайте ответа."
+        "⏳ Ожидайте ответа.",
+        reply_markup=main_reply_menu()
     )
     await callback.answer()
 
@@ -281,7 +334,8 @@ async def admin_approved(callback: CallbackQuery):
         await callback.bot.send_message(
             ad["user_id"],
             "🎉 Ваше объявление опубликовано в канале UNI Swap!\n"
-            "Спасибо за использование платформы ♻️"
+            "Спасибо за использование платформы ♻️",
+            reply_markup=main_reply_menu()
         )
 
         del PENDING_ADS[ad_id]
@@ -295,7 +349,8 @@ async def admin_approved(callback: CallbackQuery):
             f"💳 Для публикации переведите {SOS_PRICE} тг через Kaspi:\n"
             f"📱 {KASPI_PHONE}\n"
             f"👤 {KASPI_NAME}\n\n"
-            "📎 После оплаты отправьте ЧЕК (PDF или фото) в этот чат."
+            "📎 После оплаты отправьте ЧЕК (PDF или фото) в этот чат.",
+            reply_markup=main_reply_menu()
         )
 
         await callback.message.answer("⏳ Ожидаем чек от пользователя")
@@ -346,7 +401,8 @@ async def receipt_handler(message: Message):
 
     await message.answer(
         "📎 Чек получен.\n"
-        "⏳ Ожидайте подтверждения модератора."
+        "⏳ Ожидайте подтверждения модератора.",
+        reply_markup=main_reply_menu()
     )
 
 
@@ -380,7 +436,8 @@ async def admin_publish(callback: CallbackQuery):
     await callback.bot.send_message(
         ad["user_id"],
         "🎉 Ваше объявление опубликовано в канале UNI Swap!\n"
-        "Спасибо за использование платформы ♻️"
+        "Спасибо за использование платформы ♻️",
+        reply_markup=main_reply_menu()
     )
 
     del PENDING_ADS[ad_id]
@@ -411,7 +468,7 @@ async def admin_reject(callback: CallbackQuery):
             ad["user_id"],
             "❌ Чек отклонён модератором.\n\n"
             "Пожалуйста, отправьте корректный чек об оплате ещё раз.",
-            reply_markup=retry_receipt_kb()
+            reply_markup=main_reply_menu()
         )
 
         await callback.message.answer(
@@ -424,7 +481,7 @@ async def admin_reject(callback: CallbackQuery):
             ad["user_id"],
             "❌ Ваше объявление отклонено модератором.\n\n"
             "Вы можете подать объявление заново.",
-            reply_markup=retry_ad_kb()
+            reply_markup=main_reply_menu()
         )
 
         del PENDING_ADS[ad_id]
@@ -437,7 +494,20 @@ async def admin_reject(callback: CallbackQuery):
 @router.callback_query(F.data == "retry_receipt")
 async def retry_receipt(callback: CallbackQuery):
     await callback.message.answer(
-        "📎 Пожалуйста, отправьте чек об оплате (PDF или фото)."
+        "📎 Пожалуйста, отправьте чек об оплате (PDF или фото).",
+        reply_markup=main_reply_menu()
     )
     await callback.answer()
+
+
+@router.message(F.text == "📞 Связь с админом")
+async def admin_contact_handler(message: Message, state: FSMContext):
+    """Обработчик текстовой кнопки 'Связь с админом'"""
+    await state.clear()  # Очищаем состояние FSM, если было активно
+    await message.answer(
+        "📞 Связь с администратором:\n\n"
+        "👤 @nelyashakh\n\n"
+        "Напишите администратору для решения вопросов.",
+        reply_markup=main_reply_menu()
+    )
 

@@ -1,4 +1,4 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 
 def main_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -85,3 +85,21 @@ def retry_receipt_kb():
             )
         ]
     ])
+
+
+def main_reply_menu():
+    """Постоянное меню внизу чата (ReplyKeyboardMarkup)"""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(text="➕ Подать объявление"),
+                KeyboardButton(text="📂 Категории")
+            ],
+            [
+                KeyboardButton(text="📜 Правила"),
+                KeyboardButton(text="📞 Связь с админом")
+            ]
+        ],
+        resize_keyboard=True,
+        persistent=True
+    )
