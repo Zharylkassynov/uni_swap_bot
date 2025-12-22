@@ -141,7 +141,7 @@ async def ad_type_selected(callback: CallbackQuery, state: FSMContext):
         # SOS объявления: только описание
         await state.set_state(AdForm.sos_description)
         await callback.message.answer(
-            "🆘 Опишите, что вам срочно нужно.\n\n"
+            "🆘 Опишите, что вам срочно нужно.(500 тг)\n\n"
             "Пример:\n"
             "— Срочно нужен калькулятор Casio на сегодня\n"
             "— Нужен учебник по математике до завтра"
@@ -506,7 +506,7 @@ async def admin_contact_handler(message: Message, state: FSMContext):
     await state.clear()  # Очищаем состояние FSM, если было активно
     await message.answer(
         "📞 Связь с администратором:\n\n"
-        "👤 @nelyashakh\n\n"
+        "👤 @Adlet_KK\n\n"
         "Напишите администратору для решения вопросов.",
         reply_markup=main_reply_menu()
     )

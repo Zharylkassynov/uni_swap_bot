@@ -5,7 +5,7 @@ def main_menu():
         [InlineKeyboardButton(text="📝 Подать объявление", callback_data="add")],
         [InlineKeyboardButton(text="📂 Категории", callback_data="cats")],
         [InlineKeyboardButton(text="📜 Правила", callback_data="rules")],
-        [InlineKeyboardButton(text="📞 Связаться с админом", url="https://t.me/nelyashakh")]
+        [InlineKeyboardButton(text="📞 Связаться с админом", url="https://t.me/Adlet_KK")]
     ])
 
 def ad_type_kb():
@@ -19,7 +19,7 @@ def ad_type_kb():
         ],
         [
             InlineKeyboardButton(
-                text="🚨 SOS объявление (500 тг)",
+                text="🚨 SOS объявление",
                 callback_data="ad_type:sos"
             )
         ]
