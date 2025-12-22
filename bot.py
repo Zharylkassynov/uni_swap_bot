@@ -1,6 +1,10 @@
 import asyncio
 import os
+import signal
+import sys
 from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 from aiohttp import web, ClientSession
 
 from config import BOT_TOKEN
@@ -17,7 +21,7 @@ async def ping_endpoint(request):
 
 
 async def start_web_server():
-    """Запускает веб-сервер и возвращает порт"""
+    """Запускает веб-сервер"""
     app = web.Application()
     app.router.add_get("/", healthcheck)
     app.router.add_get("/ping", ping_endpoint)
@@ -26,11 +30,12 @@ async def start_web_server():
     runner = web.AppRunner(app)
     await runner.setup()
 
+    # Render автоматически устанавливает переменную PORT
     port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
     
-    print(f"🌐 Web server started on port {port}")
+    print(f"🌐 Web server started on port {port} (from PORT env: {os.environ.get('PORT', 'not set')})")
     
     # Ждем бесконечно, чтобы сервер работал
     try:
@@ -66,7 +71,7 @@ async def keep_alive_ping():
     while True:
         try:
             # Ждем 10 минут (600 секунд) - меньше чем 15 минут засыпания Render
-            await asyncio.sleep(600)
+            await asyncio.sleep(300)
             
             async with ClientSession() as session:
                 try:
@@ -86,7 +91,11 @@ async def keep_alive_ping():
 
 
 async def main():
-    bot = Bot(BOT_TOKEN)
+    # Создаем бота с правильными настройками
+    bot = Bot(
+        token=BOT_TOKEN,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+    )
     dp = Dispatcher()
     dp.include_router(router)
 
@@ -99,15 +108,27 @@ async def main():
     # Запускаем keep-alive ping в фоне
     keep_alive_task = asyncio.create_task(keep_alive_ping())
     
+    print("🤖 Bot starting...")
+    
     try:
-        await asyncio.gather(
-            dp.start_polling(bot),
-            web_server_task,
+        # Запускаем polling с правильной обработкой остановки
+        await dp.start_polling(
+            bot,
+            allowed_updates=dp.resolve_used_update_types(),
+            close_bot_session=True
         )
+    except Exception as e:
+        print(f"❌ Error in polling: {e}")
+        raise
     finally:
+        print("🛑 Shutting down...")
         # Отменяем задачи при завершении
         keep_alive_task.cancel()
         web_server_task.cancel()
+        
+        # Закрываем сессию бота
+        await bot.session.close()
+        
         try:
             await keep_alive_task
         except asyncio.CancelledError:
@@ -116,7 +137,25 @@ async def main():
             await web_server_task
         except asyncio.CancelledError:
             pass
+        
+        print("✅ Shutdown complete")
+
+
+def signal_handler(sig, frame):
+    """Обработчик сигналов для graceful shutdown"""
+    print(f"\n⚠️ Received signal {sig}, shutting down gracefully...")
+    sys.exit(0)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Регистрируем обработчики сигналов
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n⚠️ Interrupted by user")
+    except Exception as e:
+        print(f"❌ Fatal error: {e}")
+        sys.exit(1)
