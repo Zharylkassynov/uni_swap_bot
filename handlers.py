@@ -220,7 +220,7 @@ async def sos_description_handler(message: Message, state: FSMContext):
     await message.bot.send_message(
         ADMIN_GROUP_ID,
         text=admin_caption,
-        reply_markup=admin_publish_kb(ad_id)
+        reply_markup=admin_check_kb(ad_id)
     )
     
     await message.answer(
