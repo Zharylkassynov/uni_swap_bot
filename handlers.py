@@ -506,7 +506,7 @@ async def admin_contact_handler(message: Message, state: FSMContext):
     await state.clear()  # Очищаем состояние FSM, если было активно
     await message.answer(
         "📞 Связь с администратором:\n\n"
-        "👤 @Adlet_KK\n\n"
+        "👤 @nelyashakh\n\n"
         "Напишите администратору для решения вопросов.",
         reply_markup=main_reply_menu()
     )
